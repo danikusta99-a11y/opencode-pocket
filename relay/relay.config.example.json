@@ -1,0 +1,12 @@
+{
+  "opencodeUrl": "http://127.0.0.1:28894",
+  "username": "opencode",
+  "password": "your-server-password",
+  "port": 8787,
+  "relayToken": "",
+  "notify": {
+    "idle": true,
+    "permission": true,
+    "failure": true
+  }
+}

@@ -1,0 +1,89 @@
+name: Build unsigned iOS IPA
+
+# Собирает неподписанный .ipa на macOS-раннере GitHub.
+# IPA подписывается уже на вашем компьютере через Sideloadly (бесплатный Apple ID).
+# Пуш-уведомления при такой подписи не работают — нужен платный Apple Developer account.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prebuild iOS project
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Install CocoaPods
+        run: |
+          set -euo pipefail
+          cd ios
+          pod install
+
+      - name: Build unsigned app
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(ls -d ios/*.xcworkspace 2>/dev/null | head -n1 || true)"
+          if [ -z "$WORKSPACE" ]; then
+            echo "Не найден ios/*.xcworkspace — prebuild не создал проект" >&2
+            exit 1
+          fi
+          SCHEME="$(xcodebuild -workspace "$WORKSPACE" -list -json 2>/dev/null \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);const p=j.project||{};const list=p.schemes||[];process.stdout.write(list[0]||'')}catch{process.stdout.write('')}})" || true)"
+          if [ -z "$SCHEME" ]; then
+            SCHEME="$(basename "$WORKSPACE" .xcworkspace)"
+          fi
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+          xcodebuild -version
+          xcodebuild \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            EXPANDED_CODE_SIGN_IDENTITY="" \
+            -quiet \
+            build
+
+      - name: Package IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find DerivedData/Build/Products/Release-iphoneos -maxdepth 1 -name '*.app' | head -n1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "Не найден собранный .app" >&2
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry OpenCodePocket-unsigned.ipa Payload
+          ls -lh OpenCodePocket-unsigned.ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenCodePocket-unsigned-ipa
+          path: OpenCodePocket-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

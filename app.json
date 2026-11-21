@@ -1,0 +1,59 @@
+{
+  "expo": {
+    "name": "OpenCode Pocket",
+    "slug": "opencode-pocket",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "opencodepocket",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0c0f",
+    "icon": "./assets/icon.png",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.opencodepocket.client",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Камера нужна, чтобы отсканировать QR-код подключения к OpenCode.",
+        "NSLocalNetworkUsageDescription": "Приложение подключается к OpenCode на вашем компьютере по локальной сети."
+      }
+    },
+    "android": {
+      "package": "app.opencodepocket.client",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0c0f",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Камера нужна, чтобы отсканировать QR-код подключения к OpenCode."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#4fd1b5"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7ed2db0e-78cd-4f1d-bf5c-cd63e043aec8"
+      }
+    },
+    "owner": "danik124"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "opencode-pocket-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Push relay: listens to OpenCode events and forwards them as Expo push notifications",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node relay.mjs"
+  }
+}
