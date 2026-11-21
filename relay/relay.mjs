@@ -30,7 +30,11 @@ const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 
 const fileConfig = readJson(CONFIG_PATH) ?? {};
 const config = {
-  opencodeUrl: (process.env.OPENCODE_URL || fileConfig.opencodeUrl || "http://127.0.0.1:28894").replace(/\/+$/, ""),
+  opencodeUrl: (
+    process.env.OPENCODE_URL ||
+    fileConfig.opencodeUrl ||
+    "http://127.0.0.1:28894"
+  ).replace(/\/+$/, ""),
   username: process.env.OPENCODE_USERNAME || fileConfig.username || "opencode",
   password: process.env.OPENCODE_PASSWORD || fileConfig.password || "",
   port: Number(process.env.PORT || fileConfig.port || 8787),
@@ -43,11 +47,17 @@ const config = {
   },
   telegram: {
     token: process.env.TELEGRAM_BOT_TOKEN || fileConfig.telegram?.token || "",
-    chatId: String(process.env.TELEGRAM_CHAT_ID || fileConfig.telegram?.chatId || ""),
+    chatId: String(
+      process.env.TELEGRAM_CHAT_ID || fileConfig.telegram?.chatId || "",
+    ),
   },
   ntfy: {
     topic: process.env.NTFY_TOPIC || fileConfig.ntfy?.topic || "",
-    url: (process.env.NTFY_URL || fileConfig.ntfy?.url || "https://ntfy.sh").replace(/\/+$/, ""),
+    url: (
+      process.env.NTFY_URL ||
+      fileConfig.ntfy?.url ||
+      "https://ntfy.sh"
+    ).replace(/\/+$/, ""),
     token: process.env.NTFY_TOKEN || fileConfig.ntfy?.token || "",
   },
 };
@@ -77,11 +87,14 @@ function writeSubscriptions() {
 
 function normalizeSubscriptions(value) {
   if (!Array.isArray(value)) return [];
-  return value.filter((item) => item && typeof item.token === "string" && item.token.length > 10);
+  return value.filter(
+    (item) => item && typeof item.token === "string" && item.token.length > 10,
+  );
 }
 
 const authHeader =
-  "Basic " + Buffer.from(`${config.username}:${config.password}`).toString("base64");
+  "Basic " +
+  Buffer.from(`${config.username}:${config.password}`).toString("base64");
 
 function log(...args) {
   console.log(new Date().toISOString().slice(11, 19), ...args);
@@ -123,7 +136,9 @@ async function sessionTitle(sessionID) {
 
 async function lastAssistantText(sessionID) {
   try {
-    const data = await api(`/api/session/${sessionID}/message?order=desc&limit=8`);
+    const data = await api(
+      `/api/session/${sessionID}/message?order=desc&limit=8`,
+    );
     for (const message of data?.data || []) {
       if (message.type === "assistant") {
         const text = (message.content || [])
@@ -133,7 +148,11 @@ async function lastAssistantText(sessionID) {
           .trim();
         if (text) return text;
       }
-      if (message.type === "idle" && message.outcome === "failed" && message.error?.message) {
+      if (
+        message.type === "idle" &&
+        message.outcome === "failed" &&
+        message.error?.message
+      ) {
         return message.error.message;
       }
     }
@@ -144,14 +163,17 @@ async function lastAssistantText(sessionID) {
 }
 
 function short(text, max = 180) {
-  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  const clean = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
   return clean.length > max ? clean.slice(0, max - 1) + "…" : clean;
 }
 
 async function sendExpoPush(messages) {
   if (messages.length === 0) return;
   const chunks = [];
-  for (let i = 0; i < messages.length; i += 100) chunks.push(messages.slice(i, i + 100));
+  for (let i = 0; i < messages.length; i += 100)
+    chunks.push(messages.slice(i, i + 100));
 
   for (const chunk of chunks) {
     try {
@@ -165,8 +187,12 @@ async function sendExpoPush(messages) {
         body: JSON.stringify(chunk),
       });
       const data = await res.json().catch(() => null);
-      const errors = (data?.data || []).filter((ticket) => ticket.status === "error");
-      log(`push: ${chunk.length} → HTTP ${res.status}${errors.length ? `, ошибок: ${errors.length}` : ""}`);
+      const errors = (data?.data || []).filter(
+        (ticket) => ticket.status === "error",
+      );
+      log(
+        `push: ${chunk.length} → HTTP ${res.status}${errors.length ? `, ошибок: ${errors.length}` : ""}`,
+      );
       if (errors.length) log(JSON.stringify(errors.slice(0, 3)));
     } catch (error) {
       log("push error:", error.message);
@@ -211,7 +237,9 @@ async function sendNtfy(payload) {
           "Content-Type": "text/plain; charset=utf-8",
           Title: "OpenCode Pocket",
           Tags: "bell",
-          ...(config.ntfy.token ? { Authorization: `Bearer ${config.ntfy.token}` } : {}),
+          ...(config.ntfy.token
+            ? { Authorization: `Bearer ${config.ntfy.token}` }
+            : {}),
         },
         body: `${payload.title}\n${payload.body}`,
       },
@@ -231,7 +259,10 @@ function sendExternal(payload) {
 }
 
 function hasExternalChannel() {
-  return Boolean(config.telegram.token && config.telegram.chatId) || Boolean(config.ntfy.topic);
+  return (
+    Boolean(config.telegram.token && config.telegram.chatId) ||
+    Boolean(config.ntfy.topic)
+  );
 }
 
 async function broadcast(payload) {
@@ -286,7 +317,10 @@ async function handleEvent(event) {
     const resource = (data.resources || [])[0];
     await broadcast({
       title,
-      body: short(`Нужно подтверждение: ${data.action}${resource ? ` · ${resource}` : ""}`, 160),
+      body: short(
+        `Нужно подтверждение: ${data.action}${resource ? ` · ${resource}` : ""}`,
+        160,
+      ),
       data: { sessionID, title, kind: "permission" },
     });
     return;
@@ -308,7 +342,8 @@ function parseSseBlock(block) {
   const dataLines = [];
   for (const line of lines) {
     if (line.startsWith("event:")) eventName = line.slice(6).trim();
-    else if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+    else if (line.startsWith("data:"))
+      dataLines.push(line.slice(5).trimStart());
   }
   if (dataLines.length === 0) return null;
   const raw = dataLines.join("\n");
@@ -322,7 +357,11 @@ function parseSseBlock(block) {
 }
 
 async function eventLoop() {
-  const types = ["session.idle", "permission.asked", "session.execution.failed"];
+  const types = [
+    "session.idle",
+    "permission.asked",
+    "session.execution.failed",
+  ];
   const url =
     config.opencodeUrl +
     "/api/event?" +
@@ -344,13 +383,18 @@ async function eventLoop() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+        buffer += decoder
+          .decode(value, { stream: true })
+          .replace(/\r\n/g, "\n");
         let index;
         while ((index = buffer.indexOf("\n\n")) >= 0) {
           const block = buffer.slice(0, index);
           buffer = buffer.slice(index + 2);
           const event = parseSseBlock(block);
-          if (event) handleEvent(event).catch((error) => log("handleEvent:", error.message));
+          if (event)
+            handleEvent(event).catch((error) =>
+              log("handleEvent:", error.message),
+            );
         }
       }
     } catch (error) {
@@ -388,7 +432,10 @@ function authorized(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+  const url = new URL(
+    req.url || "/",
+    `http://${req.headers.host || "localhost"}`,
+  );
 
   if (req.method === "OPTIONS") {
     cors(res);
@@ -397,7 +444,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
+  if (
+    req.method === "GET" &&
+    (url.pathname === "/" || url.pathname === "/health")
+  ) {
     json(res, 200, {
       ok: true,
       service: "opencode-pocket-relay",
@@ -415,7 +465,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/subscribe") {
-    if (!authorized(req)) return json(res, 401, { error: "invalid relay token" });
+    if (!authorized(req))
+      return json(res, 401, { error: "invalid relay token" });
     try {
       const body = await readBody(req);
       const token = String(body.token || "").trim();
@@ -432,7 +483,9 @@ const server = http.createServer(async (req, res) => {
         },
       ];
       writeSubscriptions();
-      log(`подписка: ${body.device || "устройство"} (всего ${subscriptions.length})`);
+      log(
+        `подписка: ${body.device || "устройство"} (всего ${subscriptions.length})`,
+      );
       return json(res, 200, { ok: true, subscriptions: subscriptions.length });
     } catch (error) {
       return json(res, 400, { error: error.message });
@@ -440,7 +493,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/unsubscribe") {
-    if (!authorized(req)) return json(res, 401, { error: "invalid relay token" });
+    if (!authorized(req))
+      return json(res, 401, { error: "invalid relay token" });
     try {
       const body = await readBody(req);
       const before = subscriptions.length;
@@ -453,7 +507,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === "POST" && url.pathname === "/test") {
-    if (!authorized(req)) return json(res, 401, { error: "invalid relay token" });
+    if (!authorized(req))
+      return json(res, 401, { error: "invalid relay token" });
     try {
       const body = await readBody(req);
       const targets = body.token ? [{ token: body.token }] : subscriptions;
@@ -477,7 +532,8 @@ const server = http.createServer(async (req, res) => {
         );
       }
       if (hasExternalChannel()) tasks.push(...sendExternal(payload));
-      if (tasks.length === 0) return json(res, 400, { error: "no notification channels configured" });
+      if (tasks.length === 0)
+        return json(res, 400, { error: "no notification channels configured" });
       await Promise.allSettled(tasks);
       return json(res, 200, {
         ok: true,
@@ -494,7 +550,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (!config.password) {
-  log("ВНИМАНИЕ: OPENCODE_PASSWORD не задан. Если сервер требует пароль, релей не сможет подключиться.");
+  log(
+    "ВНИМАНИЕ: OPENCODE_PASSWORD не задан. Если сервер требует пароль, релей не сможет подключиться.",
+  );
 }
 
 server.listen(config.port, "0.0.0.0", () => {
