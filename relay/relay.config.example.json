@@ -8,5 +8,14 @@
     "idle": true,
     "permission": true,
     "failure": true
+  },
+  "telegram": {
+    "token": "",
+    "chatId": ""
+  },
+  "ntfy": {
+    "topic": "",
+    "url": "https://ntfy.sh",
+    "token": ""
   }
 }

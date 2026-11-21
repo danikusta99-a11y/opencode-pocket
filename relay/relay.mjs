@@ -3,14 +3,20 @@
  * OpenCode Pocket push relay.
  *
  * Subscribes to the OpenCode event stream and forwards "agent finished",
- * "permission requested" and "execution failed" events to Expo Push.
+ * "permission requested" and "execution failed" events to Expo Push,
+ * Telegram and/or ntfy.
  *
  * Config (env vars override relay.config.json):
- *   OPENCODE_URL       e.g. http://127.0.0.1:28894
- *   OPENCODE_USERNAME  default: opencode
- *   OPENCODE_PASSWORD  server password / pairing token
- *   PORT               default: 8787
- *   RELAY_TOKEN        optional shared secret required from the app
+ *   OPENCODE_URL        e.g. http://127.0.0.1:28894
+ *   OPENCODE_USERNAME   default: opencode
+ *   OPENCODE_PASSWORD   server password / pairing token
+ *   PORT                default: 8787
+ *   RELAY_TOKEN         optional shared secret required from the app
+ *   TELEGRAM_BOT_TOKEN  Telegram bot token from @BotFather
+ *   TELEGRAM_CHAT_ID    your chat id (see getUpdates)
+ *   NTFY_TOPIC          ntfy topic, e.g. opencode-pocket-8f3a
+ *   NTFY_URL            default: https://ntfy.sh
+ *   NTFY_TOKEN          optional ntfy access token
  */
 import http from "node:http";
 import fs from "node:fs";
@@ -34,6 +40,15 @@ const config = {
     permission: true,
     failure: true,
     ...(fileConfig.notify || {}),
+  },
+  telegram: {
+    token: process.env.TELEGRAM_BOT_TOKEN || fileConfig.telegram?.token || "",
+    chatId: String(process.env.TELEGRAM_CHAT_ID || fileConfig.telegram?.chatId || ""),
+  },
+  ntfy: {
+    topic: process.env.NTFY_TOPIC || fileConfig.ntfy?.topic || "",
+    url: (process.env.NTFY_URL || fileConfig.ntfy?.url || "https://ntfy.sh").replace(/\/+$/, ""),
+    token: process.env.NTFY_TOKEN || fileConfig.ntfy?.token || "",
   },
 };
 
@@ -159,20 +174,84 @@ async function sendExpoPush(messages) {
   }
 }
 
-function broadcast(payload) {
-  if (subscriptions.length === 0) {
-    log("событие есть, но нет подписок:", payload.title);
+async function sendTelegram(payload) {
+  if (!config.telegram.token || !config.telegram.chatId) return;
+  try {
+    const res = await fetch(
+      `https://api.telegram.org/bot${config.telegram.token}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: config.telegram.chatId,
+          text: `🔔 ${payload.title}\n${payload.body}`,
+          disable_web_page_preview: true,
+        }),
+      },
+    );
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data?.ok) {
+      log("telegram:", data?.description || `HTTP ${res.status}`);
+    } else {
+      log("telegram: отправлено");
+    }
+  } catch (error) {
+    log("telegram error:", error.message);
+  }
+}
+
+async function sendNtfy(payload) {
+  if (!config.ntfy.topic) return;
+  try {
+    const res = await fetch(
+      `${config.ntfy.url}/${encodeURIComponent(config.ntfy.topic)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          Title: "OpenCode Pocket",
+          Tags: "bell",
+          ...(config.ntfy.token ? { Authorization: `Bearer ${config.ntfy.token}` } : {}),
+        },
+        body: `${payload.title}\n${payload.body}`,
+      },
+    );
+    if (!res.ok) {
+      log("ntfy: HTTP", res.status, (await res.text()).slice(0, 160));
+    } else {
+      log("ntfy: отправлено");
+    }
+  } catch (error) {
+    log("ntfy error:", error.message);
+  }
+}
+
+function sendExternal(payload) {
+  return [sendTelegram(payload), sendNtfy(payload)];
+}
+
+function hasExternalChannel() {
+  return Boolean(config.telegram.token && config.telegram.chatId) || Boolean(config.ntfy.topic);
+}
+
+async function broadcast(payload) {
+  const tasks = [];
+  if (subscriptions.length > 0) {
+    const messages = subscriptions.map((sub) => ({
+      to: sub.token,
+      sound: "default",
+      priority: "high",
+      title: payload.title,
+      body: payload.body,
+      data: payload.data,
+    }));
+    tasks.push(sendExpoPush(messages));
+  } else if (!hasExternalChannel()) {
+    log("событие есть, но каналы уведомлений не настроены:", payload.title);
     return;
   }
-  const messages = subscriptions.map((sub) => ({
-    to: sub.token,
-    sound: "default",
-    priority: "high",
-    title: payload.title,
-    body: payload.body,
-    data: payload.data,
-  }));
-  return sendExpoPush(messages);
+  tasks.push(...sendExternal(payload));
+  await Promise.allSettled(tasks);
 }
 
 async function handleEvent(event) {
@@ -326,6 +405,11 @@ const server = http.createServer(async (req, res) => {
       streamConnected,
       subscriptions: subscriptions.length,
       lastEventAt: lastEventAt || null,
+      channels: {
+        expo: subscriptions.length > 0,
+        telegram: Boolean(config.telegram.token && config.telegram.chatId),
+        ntfy: Boolean(config.ntfy.topic),
+      },
     });
     return;
   }
@@ -372,20 +456,35 @@ const server = http.createServer(async (req, res) => {
     if (!authorized(req)) return json(res, 401, { error: "invalid relay token" });
     try {
       const body = await readBody(req);
-      const targets = body.token
-        ? [{ token: body.token }]
-        : subscriptions;
-      if (targets.length === 0) return json(res, 400, { error: "no subscriptions" });
-      await sendExpoPush(
-        targets.map((item) => ({
-          to: item.token,
-          sound: "default",
-          title: "OpenCode Pocket",
-          body: "Тестовое уведомление: связка работает.",
-          data: { kind: "test" },
-        })),
-      );
-      return json(res, 200, { ok: true, sent: targets.length });
+      const targets = body.token ? [{ token: body.token }] : subscriptions;
+      const payload = {
+        title: "OpenCode Pocket",
+        body: "Тестовое уведомление: связка работает.",
+        data: { kind: "test" },
+      };
+      const tasks = [];
+      if (targets.length > 0) {
+        tasks.push(
+          sendExpoPush(
+            targets.map((item) => ({
+              to: item.token,
+              sound: "default",
+              title: payload.title,
+              body: payload.body,
+              data: payload.data,
+            })),
+          ),
+        );
+      }
+      if (hasExternalChannel()) tasks.push(...sendExternal(payload));
+      if (tasks.length === 0) return json(res, 400, { error: "no notification channels configured" });
+      await Promise.allSettled(tasks);
+      return json(res, 200, {
+        ok: true,
+        sent: targets.length,
+        telegram: Boolean(config.telegram.token && config.telegram.chatId),
+        ntfy: Boolean(config.ntfy.topic),
+      });
     } catch (error) {
       return json(res, 400, { error: error.message });
     }
@@ -402,5 +501,11 @@ server.listen(config.port, "0.0.0.0", () => {
   log(`релей слушает http://0.0.0.0:${config.port}`);
   log(`OpenCode: ${config.opencodeUrl}`);
   log(`подписок в файле: ${subscriptions.length}`);
+  const channels = [
+    subscriptions.length > 0 ? `expo (${subscriptions.length})` : null,
+    config.telegram.token && config.telegram.chatId ? "telegram" : null,
+    config.ntfy.topic ? `ntfy (${config.ntfy.topic})` : null,
+  ].filter(Boolean);
+  log(`каналы: ${channels.length ? channels.join(", ") : "не настроены"}`);
   eventLoop();
 });

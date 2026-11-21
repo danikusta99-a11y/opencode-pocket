@@ -60,16 +60,24 @@ opencode pair --url http://192.168.1.20:4096
 
 Можно не использовать pairing, а ввести URL и пароль вручную (вкладка «URL + пароль»). Пароль — тот, что задан через `opencode service set password …`.
 
-## 2. Релей push-уведомлений
+## 2. Уведомления: релей
 
-iOS-приложению неоткуда знать о событиях, когда оно закрыто. Рядом с OpenCode запускается маленький релей: он слушает SSE-поток `/api/event` и отправляет пуши через Expo Push.
+Приложению неоткуда знать о событиях, когда оно закрыто. Рядом с OpenCode запускается релей: он слушает SSE-поток `/api/event` и отправляет уведомления в один или несколько каналов:
+
+| Канал | Платный Apple Developer | Куда приходит |
+|---|---|---|
+| Expo Push | **да** | в само приложение OpenCode Pocket |
+| Telegram | нет | в Telegram |
+| ntfy | нет | в приложение ntfy |
+
+Если ставите unsigned IPA с бесплатным Apple ID — **Expo Push невозможен**, выбирайте Telegram или ntfy.
 
 ```sh
 cd opencode-pocket/relay
 cp relay.config.example.json relay.config.json
 ```
 
-Заполните `relay.config.json`:
+Заполните `relay.config.json` (нужные каналы, лишние оставьте пустыми):
 
 ```json
 {
@@ -78,23 +86,36 @@ cp relay.config.example.json relay.config.json
   "password": "ваш-пароль-сервера",
   "port": 8787,
   "relayToken": "",
-  "notify": { "idle": true, "permission": true, "failure": true }
+  "notify": { "idle": true, "permission": true, "failure": true },
+  "telegram": { "token": "", "chatId": "" },
+  "ntfy": { "topic": "", "url": "https://ntfy.sh", "token": "" }
 }
 ```
 
-`opencodeUrl` — адрес, который показывает `opencode service status` (обычно loopback-порт, релей ходит туда с компьютера). Запуск:
+`opencodeUrl` — адрес из `opencode service status` (релей ходит туда с компьютера). Запуск:
 
 ```sh
 node relay.mjs
 ```
 
-Проверка:
+Проверка: `curl http://127.0.0.1:8787/health` — покажет `streamConnected`, число подписок и включённые каналы. Тест: `curl -X POST http://127.0.0.1:8787/test`.
 
-```sh
-curl http://127.0.0.1:8787/health
-```
+### Telegram (бесплатно)
 
-В приложении: **⚙ → Push-уведомления → адрес релея** `http://IP-компьютера:8787` → «Включить». Появится Expo push token, а релей получит подписку. Кнопка «Отправить тестовый пуш» проверяет всю цепочку.
+1. В Telegram напишите **@BotFather** → `/newbot` → получите токен.
+2. Напишите своему боту любое сообщение.
+3. Откройте `https://api.telegram.org/bot<ТОКЕН>/getUpdates` и возьмите `chat.id`.
+4. Впишите `telegram.token` и `telegram.chatId`, перезапустите релей.
+
+### ntfy (бесплатно)
+
+1. Установите **ntfy** из App Store, подпишитесь на тему, например `opencode-pocket-8f3a91`.
+2. Впишите её в `ntfy.topic` (имя темы — это фактически пароль, выбирайте случайное).
+3. Перезапустите релей и нажмите тест.
+
+### Expo Push (только с платным Apple Developer)
+
+В приложении: **⚙ → Push-уведомления → адрес релея** `http://IP-компьютера:8787` → «Включить». Появится Expo push token, релей получит подписку. Кнопка «Отправить тестовый пуш» проверяет цепочку.
 
 `relayToken` — необязательный общий секрет: если задан, приложение должно отправить его в заголовке `X-Relay-Token`. Не выставляйте релей в интернет без него.
 
