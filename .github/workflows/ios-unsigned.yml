@@ -9,7 +9,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # Expo SDK 58 is built against the iOS 27 SDK, so it needs Xcode 27.
+    # `xcode-27` is the only standard GitHub runner label with it.
+    runs-on: xcode-27
     timeout-minutes: 60
     steps:
       - name: Checkout
